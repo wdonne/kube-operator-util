@@ -2,10 +2,17 @@
 //! five condition objects. It also updates the field `health`, with its subfield `status`, which
 //! has the predefined values `Healthy`, `Unhealthy` and `Unknown`. The field `phase` has the
 //! predefined values `Pending` and `Ready`. It is allowed to use other values for the fields.
+use crate::util::simple_patch_params;
 use chrono::{DateTime, SecondsFormat, Utc};
+use kube::Api;
+use kube_core::params::Patch;
+use kube_core::ResourceExt;
 use schemars::JsonSchema;
+use schemars::_private::serde_json::json;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::cmp;
+use std::fmt::Debug;
 
 pub const ERROR: &str = "Error";
 pub const FALSE: &str = "False";
@@ -27,6 +34,15 @@ pub struct Condition {
     reason: String,
     status: String,
 }
+
+pub trait GetStatus {
+    fn status(&self) -> Option<&Status>;
+}
+
+pub trait Patchable: Clone + DeserializeOwned + Debug + ResourceExt + GetStatus + 'static {}
+
+impl<T> Patchable for T where T: Clone + DeserializeOwned + Debug + ResourceExt + GetStatus + 'static
+{}
 
 #[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
 pub struct Health {
@@ -84,8 +100,36 @@ pub fn healthy() -> Health {
     }
 }
 
+pub fn is_not_ready(current_status: Option<&Status>) -> bool {
+    current_status.is_some() && current_status.as_ref().filter(|s| s.is_ready()).is_none()
+}
+
+pub fn next_status(current_status: Option<&Status>, error: Option<&str>) -> Status {
+    error.map_or_else(
+        || set_ready(current_status),
+        |e| set_error(current_status, &e),
+    )
+}
+
 fn now() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
+}
+
+pub async fn patch_status<T>(
+    api: &Api<T>,
+    obj: &T,
+    error: Option<&str>,
+    field_manager: &str,
+) -> Result<T, kube::Error>
+where
+    T: Patchable,
+{
+    api.patch_status(
+        &obj.name_any(),
+        &simple_patch_params(field_manager),
+        &Patch::Merge(&json!({"status": next_status(obj.status(), error)})),
+    )
+    .await
 }
 
 /// Updates the given status with an error condition or creates a new status object with the
