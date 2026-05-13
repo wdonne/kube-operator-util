@@ -1,6 +1,6 @@
 [package]
 name = "kube-operator-util"
-version = "1.1.0"
+version = "1.2.0"
 edition = "2024"
 description = "Utilities for Kubernetes operators"
 homepage = "https://github.com/wdonne/kube-operator-util"

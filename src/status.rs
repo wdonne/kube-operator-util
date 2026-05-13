@@ -2,7 +2,7 @@
 //! five condition objects. It also updates the field `health`, with its subfield `status`, which
 //! has the predefined values `Healthy`, `Unhealthy` and `Unknown`. The field `phase` has the
 //! predefined values `Pending` and `Ready`. It is allowed to use other values for the fields.
-use crate::util::simple_patch_params;
+use crate::util::{simple_patch_params};
 use chrono::{DateTime, SecondsFormat, Utc};
 use kube::Api;
 use kube_core::params::Patch;
@@ -101,7 +101,7 @@ pub fn healthy() -> Health {
 }
 
 pub fn is_not_ready(current_status: Option<&Status>) -> bool {
-    current_status.is_some() && current_status.as_ref().filter(|s| s.is_ready()).is_none()
+    current_status.is_none_or(|s| !s.is_ready())
 }
 
 pub fn next_status(current_status: Option<&Status>, error: Option<&str>) -> Status {
