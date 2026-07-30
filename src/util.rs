@@ -1,12 +1,12 @@
 //! Utility functions.
 
-use crate::status::{is_not_ready, GetStatus};
+use crate::status::{GetStatus, is_not_ready};
+use k8s_openapi::NamespaceResourceScope;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ManagedFieldsEntry, ObjectMeta};
 use k8s_openapi::jiff::Timestamp;
-use k8s_openapi::NamespaceResourceScope;
-use kube::runtime::events::{Event, EventType};
-use kube::runtime::{watcher, Config, Controller};
 use kube::Resource;
+use kube::runtime::events::{Event, EventType};
+use kube::runtime::{Config, Controller, watcher};
 use kube::{Api, Client};
 use kube_core::params::{PatchParams, PostParams};
 use log::{error, info};
@@ -91,13 +91,22 @@ pub fn last_update_if_owned(
     metadata: &ObjectMeta,
     field_manager: &str,
 ) -> Option<ManagedFieldsEntry> {
-    metadata.managed_fields.as_ref().and_then(|v| {
-        v.iter().cloned().max_by(|e1, e2| {
-            e1.time
-                .cmp(&e2.time)
-                .then(give_precedence_to_own(e1, e2, field_manager))
+    metadata
+        .managed_fields
+        .as_ref()
+        .and_then(|v| {
+            v.iter().cloned().max_by(|e1, e2| {
+                e1.time
+                    .cmp(&e2.time)
+                    .then(give_precedence_to_own(e1, e2, field_manager))
+            })
         })
-    })
+        .filter(|m| {
+            m.manager
+                .as_ref()
+                .map(|f| f == field_manager)
+                .unwrap_or(false)
+        })
 }
 
 /// Returns the last update to the resource that meets the condition.
@@ -108,23 +117,28 @@ pub fn last_update_with_condition<F>(
 where
     F: FnMut(&ManagedFieldsEntry) -> bool,
 {
-    metadata.managed_fields.as_ref().and_then(|v| {
-        v.iter()
-            .cloned()
-            .filter(condition)
-            .max_by(|e1, e2| e1.time.cmp(&e2.time))
-    })
+    let mut cond = condition;
+
+    metadata
+        .managed_fields
+        .as_ref()
+        .and_then(|v| {
+            v.iter()
+                .filter(|c| cond(c))
+                .max_by(|e1, e2| e1.time.cmp(&e2.time))
+        })
+        .cloned()
 }
 
 /// Produces a log entry about either success of failure.
 pub fn report_reconciliation<T, E>(
-    resource: Result<T, kube::runtime::controller::Error<E, kube::runtime::watcher::Error>>,
+    result: Result<T, kube::runtime::controller::Error<E, kube::runtime::watcher::Error>>,
 ) where
     E: Error,
     T: Debug,
 {
-    match resource {
-        Ok(o) => info!("Reconciled {o:?}"),
+    match result {
+        Ok(o) => info!("Reconciled {0:?}", o),
         Err(e) => error!("Reconciliation failed: {}", source_message(&e)),
     }
 }

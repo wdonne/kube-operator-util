@@ -2,13 +2,13 @@
 //! five condition objects. It also updates the field `health`, with its subfield `status`, which
 //! has the predefined values `Healthy`, `Unhealthy` and `Unknown`. The field `phase` has the
 //! predefined values `Pending` and `Ready`. It is allowed to use other values for the fields.
-use crate::util::{simple_patch_params};
+use crate::util::simple_patch_params;
 use chrono::{DateTime, SecondsFormat, Utc};
 use kube::Api;
-use kube_core::params::Patch;
 use kube_core::ResourceExt;
-use schemars::JsonSchema;
+use kube_core::params::Patch;
 use schemars::_private::serde_json::json;
+use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::cmp;
@@ -107,7 +107,7 @@ pub fn is_not_ready(current_status: Option<&Status>) -> bool {
 pub fn next_status(current_status: Option<&Status>, error: Option<&str>) -> Status {
     error.map_or_else(
         || set_ready(current_status),
-        |e| set_error(current_status, &e),
+        |e| set_error(current_status, e),
     )
 }
 
